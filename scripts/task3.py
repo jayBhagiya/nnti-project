@@ -1,7 +1,6 @@
 import torch 
 import pandas as pd
 import numpy as np
-import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments, DataCollatorForLanguageModeling
 from torch.utils.data import random_split
 from task3_data_preparation import prepare_data
@@ -82,6 +81,6 @@ if __name__ == "__main__":
     # arguments: the model, train_dataset and eval_dataset should be torch.utils.data.Dataset or torch.utils.data.IterableDataset
     xglm_trainer = Trainer(xglm_model, training_args, data_collator=data_collator, train_dataset=tokenized_train_datasets, eval_dataset=tokenized_eval_datasets, tokenizer=xglm_tokenizer)
 
-    for i in tqdm.tqdm(range(10000), desc='Processing'):
+    for i in range(10000):
         # start training
         xglm_trainer.train()
