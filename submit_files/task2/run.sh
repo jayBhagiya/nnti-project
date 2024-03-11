@@ -4,4 +4,4 @@ echo $HOSTNAME
 which python
 python -m pip list
 
-python ../scripts/task2.py
+python ../../scripts/task2.py
