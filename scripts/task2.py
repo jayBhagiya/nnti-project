@@ -139,7 +139,7 @@ if __name__ == "__main__":
         return [s.encode('utf-8') for s in string_list]
 
     # Open an HDF5 file in write mode
-    with h5py.File('embeddings.h5', 'w') as f:
+    with h5py.File('./../embeddings.h5', 'w') as f:
         # Save token embeddings 
         for i, tensor in enumerate(token_embeddings):
             f.create_dataset(f'token_embeddings/{i}', data=tensor.numpy())
