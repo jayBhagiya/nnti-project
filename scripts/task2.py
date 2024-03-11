@@ -77,7 +77,7 @@ if __name__ == "__main__":
             # Get dataloader for each langugae
             print("Language:",lang)
             current_loader = dataloaders[lang]
-           
+            
             lang_token_embeddings = torch.zeros((0,25,1024)).to(default_device)
             lang_sentence_embeddings = torch.zeros((0,25,1024)).to(default_device)
             lang_tokens = []
@@ -95,7 +95,7 @@ if __name__ == "__main__":
 
                 # attention mask either holds a value of 0 or 1 depending on
                 # if the token is a padded one or not.
-                attention_mask = encoded_sentences["attention_mask"]
+                attention_mask = encoded_sentences["attention_mask"].to(default_device)
 
                 encoded_non_pad_tokens = input_ids.reshape(-1)[attention_mask.reshape(-1).bool()]
                 decoded_tokens = [tokenizer.decode([token]) for token in encoded_non_pad_tokens]
@@ -139,10 +139,10 @@ if __name__ == "__main__":
         return [s.encode('utf-8') for s in string_list]
 
     # Open an HDF5 file in write mode
-    with h5py.File('./../embeddings.h5', 'w') as f:
+    with h5py.File('embeddings.h5', 'w') as f:
         # Save token embeddings 
         for i, tensor in enumerate(token_embeddings):
-            f.create_dataset(f'token_embeddings/{i}', data=tensor.numpy())
+            f.create_dataset(f'token_embeddings/{i}', data=tensor.cpu().numpy())
 
         # Save tokens. Needs to be encodes for special tokens
         for i, string_list in enumerate(tokens):
@@ -151,7 +151,7 @@ if __name__ == "__main__":
 
         # Save sentence embeddings
         for i, tensor in enumerate(sentence_embeddings):
-            f.create_dataset(f'sentence_embeddings/{i}', data=tensor.numpy())
+            f.create_dataset(f'sentence_embeddings/{i}', data=tensor.cpu().numpy())
 
         # Save sequences. Needs to be encodes for special tokens
         for i, string_list in enumerate(sequences):
