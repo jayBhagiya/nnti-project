@@ -1,4 +1,4 @@
-name: nnti_project
+name: nnti-project
 channels:
   - pytorch
   - nvidia
@@ -7,10 +7,14 @@ channels:
 dependencies:
   - pytorch 
   - torchvision 
-  - torchaudio 
+  - torchaudio
+  - transformers
+  - sentencepiece 
   - pytorch-cuda=11.8
   - matplotlib
   - pandas
+  - datasets
   - numpy
   - notebook
-
+  - protobuf
+  - accelerate
