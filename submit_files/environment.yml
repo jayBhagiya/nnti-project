@@ -5,6 +5,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
+  - argparse
   - pytorch 
   - torchvision 
   - torchaudio
@@ -18,3 +19,5 @@ dependencies:
   - notebook
   - protobuf
   - accelerate
+  - h5py
+  - random
