@@ -13,12 +13,21 @@ from transformers import DeepSpeedPlugin
 from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments, DataCollatorForLanguageModeling
 
 MODEL_NAME = "facebook/xglm-564M"
+wandb_api_key = "your-api-key"
+
+# Set environment variables
+os.environ["WANDB_LOG_MODEL"] = "true"
+os.environ["WANDB_WATCH"] = "false"
 
 ########################################################
 # Entry point
 ########################################################
 
 if __name__ == "__main__":
+    
+    wandb.login(key=wandb_api_key)
+    # Initialize Wandb run
+    wandb.init(project="your-project-name", entity="your-username", config=os.environ)
 
     # Check if CUDA is available
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -142,15 +151,6 @@ if __name__ == "__main__":
         offload_optimizer_device='cpu',  # Offload optimizer states to CPU
         offload_param_device='cpu'  # Offload model parameters to CPU
     )
-
-    # set the wandb project where this run will be logged
-    os.environ["WANDB_PROJECT"]="nnti-project"
-
-    # save your trained model checkpoint to wandb
-    os.environ["WANDB_LOG_MODEL"]="true"
-
-    # turn off watch to log faster
-    os.environ["WANDB_WATCH"]="false"
     
     training_args = TrainingArguments(
         per_device_train_batch_size=per_device_train_batch_size,
