@@ -19,3 +19,5 @@ dependencies:
   - protobuf
   - accelerate
   - h5py
+  - evaluate
+  - wandb
