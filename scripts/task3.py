@@ -1,11 +1,16 @@
+import os
+import tqdm
+import wandb
 import torch 
+import evaluate
+
 import pandas as pd
 import numpy as np
-import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments, DataCollatorForLanguageModeling
+
 from torch.utils.data import random_split
 from task3_data_preparation import prepare_data_qu, prepare_data_fine_tune_eval
-import evaluate
+from transformers import DeepSpeedPlugin
+from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments, DataCollatorForLanguageModeling
 
 MODEL_NAME = "facebook/xglm-564M"
 
@@ -13,8 +18,7 @@ MODEL_NAME = "facebook/xglm-564M"
 # Entry point
 ########################################################
 
-if __name__ == "_main_":
-    # TODO: your code goes here
+if __name__ == "__main__":
 
     # Check if CUDA is available
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -118,8 +122,6 @@ if __name__ == "_main_":
         perplexity = metric.compute(predictions=true_next_token_probabilities.squeeze(), references=labels)
         
         return perplexity
-
-
     
 
     # specify the training arguments. note that these are hyperparameters.
@@ -133,12 +135,60 @@ if __name__ == "_main_":
     # since we are using causal language modeling, predict the next token in the sequence given the previous tokens,
     # we choose mlm to be false. 
     data_collator = DataCollatorForLanguageModeling(xglm_tokenizer, mlm=False)
-    training_args = TrainingArguments(per_device_train_batch_size=per_device_train_batch_size, per_device_eval_batch_size=per_device_eval_batch_size, output_dir="trainer_outout", num_train_epochs=num_train_epochs)
+    
+    # Define the DeepSpeed Plugin
+    deepspeed_plugin = DeepSpeedPlugin(
+        zero_optimization_level=2,  # ZeRO-2 optimization level
+        offload_optimizer_device='cpu',  # Offload optimizer states to CPU
+        offload_param_device='cpu'  # Offload model parameters to CPU
+    )
 
-    # we need to pass the model to the trainer (training and eval loop for PyTorch)
-    # arguments: the model, train_dataset and eval_dataset should be torch.utils.data.Dataset or torch.utils.data.IterableDataset
-    xglm_trainer = Trainer(xglm_model, training_args, data_collator=data_collator, train_dataset=tokenized_train_datasets, eval_dataset=tokenized_eval_datasets, tokenizer=xglm_tokenizer, compute_metrics=compute_metrics)
+    # set the wandb project where this run will be logged
+    os.environ["WANDB_PROJECT"]="nnti-project"
+
+    # save your trained model checkpoint to wandb
+    os.environ["WANDB_LOG_MODEL"]="true"
+
+    # turn off watch to log faster
+    os.environ["WANDB_WATCH"]="false"
+    
+    training_args = TrainingArguments(
+        per_device_train_batch_size=per_device_train_batch_size,
+        per_device_eval_batch_size=per_device_eval_batch_size,
+        output_dir="trainer_output",
+        report_to="wandb",
+        num_train_epochs=num_train_epochs,
+        deepspeed=deepspeed_plugin,  # Pass the DeepSpeed Plugin
+        fp16=True,  # Use 16-bit floating point numbers
+        evaluation_strategy="epoch",  # Evaluate after each epoch
+        save_strategy="epoch",  # Save after each epoch
+    )
+
+    # Initialize WandB logging
+    trainer = Trainer(
+        xglm_model,
+        training_args,
+        data_collator=data_collator,
+        train_dataset=tokenized_train_datasets,
+        eval_dataset=tokenized_eval_datasets,
+        tokenizer=xglm_tokenizer,
+        compute_metrics=compute_metrics
+    )
 
     for i in tqdm.tqdm(range(10000), desc='Processing'):
         # start training
         xglm_trainer.train()
+        torch.cuda.empty_cache()  # Empty the CUDA cache to free up memory
+
+    # Save the best checkpoint based on evaluation performance
+    trainer.save_model("xglm_finetuned_qu_best")
+
+    # Evaluate the model on other languages after adaptation
+    evaluation_results = {}
+    for lang, eval_dataset in tokenized_eval_datasets.items():
+        eval_result = trainer.evaluate(eval_dataset)
+        evaluation_results[lang] = eval_result["eval_loss"]
+        print(f"Evaluation loss for language {lang}: {evaluation_results[lang]}")
+
+    # Close WandB run
+    wandb.finish()
