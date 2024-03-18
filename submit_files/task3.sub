@@ -1,16 +1,16 @@
 universe                = docker
 docker_image            = pytorch/pytorch:2.0.1-cuda11.7-cudnn8-runtime
 # This uses the conda env
-executable              = conda_run.sh  
+executable              = conda_run_task2.sh  
 environment             = PROJECT_ROOT=$ENV(PWD)
 initialdir              = $ENV(PWD)
 output                  = logs/task3.$(ClusterId).$(ProcId).out
 error                   = logs/task3.$(ClusterId).$(ProcId).err
 log                     = logs/task3.$(ClusterId).log
 transfer_output         = True
-request_GPUs = 8
+request_GPUs = 4
 request_CPUs = 1
-request_memory = 8G
+request_memory = 16G
 requirements = (GPUs_GlobalMemoryMb >= 16000)
 getenv = HOME
 +WantGPUHomeMounted = true

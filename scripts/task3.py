@@ -1,56 +1,78 @@
 import os
 import tqdm
+import torch
 import wandb
-import torch 
 import evaluate
-
-import pandas as pd
+import datasets
 import numpy as np
 
-from torch.utils.data import random_split
 from task3_data_preparation import prepare_data_qu, prepare_data_fine_tune_eval
-from transformers import DeepSpeedPlugin
-from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments, DataCollatorForLanguageModeling
+from task3_custom_peft import BitFitAdaptedModel, LoRaAdaptedModel, IA3AdaptedModel
+from task3_utils import ParamsUtils
+
+import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader
+from transformers import AdamW, get_scheduler
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import Trainer, TrainingArguments
+from transformers import DataCollatorForLanguageModeling, DataCollatorWithPadding
 
 MODEL_NAME = "facebook/xglm-564M"
-wandb_api_key = "your-api-key"
+DATASET_NAME = "facebook/flores" # Just for the evalution of the languages defined in the task2
 
-# Set environment variables
-os.environ["WANDB_LOG_MODEL"] = "true"
-os.environ["WANDB_WATCH"] = "false"
+TRAIN_SAMPLES = 2000       # This number of samples from new dataset are used for fine-tuning the model
+BATCH_SIZE = 2
+MIN_EPOCHS = 10
+MAX_EPOCHS = 100
+GRAD_ACCUM = 4
+GRAD_CHECKPOINTING = True
+FP16 = True
+
+PROJECT_NAME = "nnti-project"
+ENTITY = "your-wandb-entity"
+
+# specify languages that will be used to evaluate the model's performance
+# during fine-tuning.
+LANGUAGES = [
+    "eng_Latn",
+    "spa_Latn",
+    "ita_Latn",
+    "deu_Latn",
+    "arb_Arab",
+    "tel_Telu",
+    "tam_Taml"
+]
+
+# Check if CUDA is available
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"Using {device} device")
 
 ########################################################
-# Entry point
+# Functions
 ########################################################
-
-if __name__ == "__main__":
-    
-    wandb.login(key=wandb_api_key)
-    # Initialize Wandb run
-    wandb.init(project="your-project-name", entity="your-username", config=os.environ)
-
-    # Check if CUDA is available
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using {device} device")
-    
+def run_task3():
+    ########################################################
     # Steps:
-    # 1) Prepare the dataset
-    # 
-    # 2) Perform training => use class transformers.Trainer
+    # 1) Prepare the dataloaders
+    # 2) Perform fine tuning
+    # 3) Different Adaptation methods
+    ########################################################
 
-
-    # Step 1)
+    #=======================================================
+    # Step 1) Prepare the dataloaders
+    #=======================================================
 
     # Load the dataset
     dataset_path = "hackathon-pln-es/spanish-to-quechua"
 
     data_files = {
-    "train": "data/train-00000-of-00001.parquet",
-    "validation": "data/validation-00000-of-00001.parquet",
-    "test": "data/test-00000-of-00001.parquet"
+        "train": "data/train-00000-of-00001.parquet",
+        "validation": "data/validation-00000-of-00001.parquet",
+        "test": "data/test-00000-of-00001.parquet"
     }
+
     # train_dataset_list and evaluation_dataset_list contain sentences in "qu" as a list
-    train_dataset_list, evaluation_dataset_list = prepare_data_qu(dataset_path, data_files)
+    train_dataset_qu, evaluation_dataset_qu = prepare_data_qu(dataset_path, data_files)
 
     # specify languages that will be used to evaluate the model's performance
     # during fine-tuning.
@@ -64,21 +86,21 @@ if __name__ == "__main__":
         "tam_Taml"
     ]
 
-    # while fine_tuning, we need to check the model's performance on other 
+    # while fine_tuning, we need to check the model's performance on other
     # languages as well to see how the performance gets affected.
-    prepare_data_fine_tune_eval = prepare_data_fine_tune_eval(LANGUAGES)
+    dataset_eval = prepare_data_fine_tune_eval(LANGUAGES)
 
     # append the dataset obtained for fine_tuning to the evaluation dataset
-    prepare_data_fine_tune_eval["qu"] = evaluation_dataset_list
-    
+    dataset_eval["que_Quec"] = evaluation_dataset_qu
 
-    # Step 2)
-
-    # load pre-trained model from the huggingface hub
-    xglm_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
+    #=======================================================
+    # 1:Prepare the dataloaders
+    #   1.1: Dataloaders with the tokenized dataset.
+    #=======================================================
 
     # load a pre-trained tokenizer from the huggingface hub
     xglm_tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    data_collator_pad = DataCollatorWithPadding(tokenizer=xglm_tokenizer)
 
     # since we are using a decoder only architecture, we need to perform the padding
     # on the left side so that the model does not get confused while guessing the next token.
@@ -86,109 +108,168 @@ if __name__ == "__main__":
 
     # specify the tokenization function
     def tokenization(example):
-        # fill in here
         tokenized = xglm_tokenizer(example, padding=True, truncation=True)
         return tokenized
-    
-    
+
     # tokenize the sentences in the train dataset, which is made up of only "qu" language
-    tokenized_train_datasets = [tokenization(sentence) for sentence in train_dataset_list]
+    tokenized_train_datasets = [tokenization(sentence) for sentence in train_dataset_qu[:TRAIN_SAMPLES]]
 
-    # tokenize the sentences in the eval dataset, which is made of several languages. 
+    # tokenize the sentences in the eval dataset, which is made of several languages.
     tokenized_eval_datasets = {}
-    for lang in prepare_data_fine_tune_eval.keys():
-        tokenized_eval_datasets[lang] = [tokenization(sentence) for sentence in prepare_data_fine_tune_eval[lang]]
+    for lang in dataset_eval.keys():
+        tokenized_eval_datasets[lang] = [tokenization(sentence) for sentence in dataset_eval[lang][:TRAIN_SAMPLES]]
 
-    # Setup evaluation 
-    metric = evaluate.load("perplexity", module_type="metric")
+    train_dataloader = DataLoader(tokenized_train_datasets, shuffle=True, batch_size=BATCH_SIZE, collate_fn=data_collator_pad)
 
-    def compute_metrics(eval_pred):
-        """
-        This function will be used for model evaluation. 
+    # Construct a PyTorch DataLoader for each dataset
+    eval_dataloaders = {
+        lang: DataLoader(dataset, batch_size=BATCH_SIZE, collate_fn=data_collator_pad) for lang, dataset in tokenized_eval_datasets.items()
+    }
 
-        args:
-            eval_pred: the output of the model. Made up of logits and labels, where logits
-            are unnormalized scores that the model predicts. These logits are typically 
-            transformed into probabilities using a softmax function. 
-
-        returns:
-            - Dictionary: the keys represent different sub-datasets and the evaluation on them separately.
-        """
-
-        # In evaluation mode, the output of an autoregressive model like XGLM consists of logits 
-        # corresponding to the score for each possible next token in the vocabulary given the previous sequence of tokens. 
-        # The label is the ground truth—the actual token that comes next in the sequence according to the dataset, 
-        # regardless of the model's prediction. It's the target that the model is trying to predict.
-        logits, labels = eval_pred
-
-        # Convert logits to probabilities for all possible next words
-        probabilities = torch.softmax(logits, axis=-1)
-        
-        # You need the probabilities of the actual next tokens, referenced by the labels
-        true_next_token_probabilities = np.take_along_axis(probabilities, np.expand_dims(labels, -1), axis=-1)
-
-        # Perplexity is calculated using the probabilities of the true next tokens
-        perplexity = metric.compute(predictions=true_next_token_probabilities.squeeze(), references=labels)
-        
-        return perplexity
+    #=======================================================
+    # Step 2) Perform fine tuning
+    #=======================================================
     
-
-    # specify the training arguments. note that these are hyperparameters.
-    # train_batch_size   
-    per_device_train_batch_size = 6
-    per_device_eval_batch_size = 6
-    num_train_epochs = 1
-
-    # data collators will form batches by using a list of dataset elements as input.
-    # to be able to build batches, they may apply some processing (like padding).
-    # since we are using causal language modeling, predict the next token in the sequence given the previous tokens,
-    # we choose mlm to be false. 
-    data_collator = DataCollatorForLanguageModeling(xglm_tokenizer, mlm=False)
+    wandb.init(project=PROJECT_NAME, entity=ENTITY)
     
-    # Define the DeepSpeed Plugin
-    deepspeed_plugin = DeepSpeedPlugin(
-        zero_optimization_level=2,  # ZeRO-2 optimization level
-        offload_optimizer_device='cpu',  # Offload optimizer states to CPU
-        offload_param_device='cpu'  # Offload model parameters to CPU
-    )
+    #=======================================================
+    # 2:Fine Tuning
+    #   2.1: Models
+    #=======================================================
+
+    xglm_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
+    bitfit_model = BitFitAdaptedModel(MODEL_NAME)
+    lora_model = LoRaAdaptedModel(MODEL_NAME, rank=4, alpha=1)
+    ia3_model = IA3AdaptedModel(MODEL_NAME)
+
+    ParamsUtils(xglm_model, bitfit_model, "bitfit").print_stats()
+    ParamsUtils(xglm_model, lora_model, "lora").print_stats()
+    ParamsUtils(xglm_model, ia3_model, "ia3").print_stats()
+
+    models = {
+        "xglm-fine": xglm_model, 
+        "bitfit": bitfit_model, 
+        "lora": lora_model, 
+        "ia3": ia3_model
+    }
+
+    optimizers = {
+        name: AdamW(model.parameters(), lr=2e-4) for name, model in models.items()
+    }
+
+    for name, model in models.items():
+        model.to(device)
+
+    #=======================================================
+    # 2:Fine Tuning
+    #   2.2: Args setting
+    #=======================================================
+
+    num_epochs = MIN_EPOCHS
+    num_training_steps = num_epochs * len(train_dataloader)
     
-    training_args = TrainingArguments(
-        per_device_train_batch_size=per_device_train_batch_size,
-        per_device_eval_batch_size=per_device_eval_batch_size,
-        output_dir="trainer_output",
-        report_to="wandb",
-        num_train_epochs=num_train_epochs,
-        deepspeed=deepspeed_plugin,  # Pass the DeepSpeed Plugin
-        fp16=True,  # Use 16-bit floating point numbers
-        evaluation_strategy="epoch",  # Evaluate after each epoch
-        save_strategy="epoch",  # Save after each epoch
-    )
+    lr_schedulers = {
+        name: get_scheduler(
+          "linear",
+          optimizer=optimizers[name],
+          num_warmup_steps=0,
+          num_training_steps=num_training_steps
+        ) for name, model in models.items()
+    }
 
-    # Initialize WandB logging
-    trainer = Trainer(
-        xglm_model,
-        training_args,
-        data_collator=data_collator,
-        train_dataset=tokenized_train_datasets,
-        eval_dataset=tokenized_eval_datasets,
-        tokenizer=xglm_tokenizer,
-        compute_metrics=compute_metrics
-    )
+    #=======================================================
+    # 2:Fine Tuning
+    #   2.3: Training
+    #=======================================================
 
-    for i in tqdm.tqdm(range(10000), desc='Processing'):
-        # start training
-        xglm_trainer.train()
-        torch.cuda.empty_cache()  # Empty the CUDA cache to free up memory
+    model_names = ["xglm-fine", "bitfit", "lora", "ia3"]
 
-    # Save the best checkpoint based on evaluation performance
-    trainer.save_model("xglm_finetuned_qu_best")
+    for name in model_names:
+        model = train(models[name], train_dataloader, num_epochs, optimizers[name], lr_schedulers[name], name)
+        models[name] = model
 
-    # Evaluate the model on other languages after adaptation
-    evaluation_results = {}
-    for lang, eval_dataset in tokenized_eval_datasets.items():
-        eval_result = trainer.evaluate(eval_dataset)
-        evaluation_results[lang] = eval_result["eval_loss"]
-        print(f"Evaluation loss for language {lang}: {evaluation_results[lang]}")
+        torch.save(models[name].state_dict(), f"{name}_model.pt")
+        wandb.save(f"{name}_model.pt")
 
-    # Close WandB run
+    #=======================================================
+    # 2:Fine Tuning
+    #   2.3: Evaluation
+    #=======================================================
+
+    for name in model_names:
+        test_model(models[name], eval_dataloaders, name)
+
     wandb.finish()
+
+
+def train(model, train_dataloader, num_epochs, optimizer, lr_scheduler, model_name):
+    # Tell wandb to watch what the model gets up to: gradients, weights, and more!
+    wandb.watch(model, nn.CrossEntropyLoss(), log="all", log_freq=50)
+
+    model.train()
+    for epoch in tqdm.tqdm(range(num_epochs)):
+        batch_step = 0
+        loss = 0
+        for batch in train_dataloader:
+            batch = {k: v.to(device) for k, v in batch.items()}
+
+            input_ids = batch["input_ids"]
+            attention_mask = batch["attention_mask"]
+            labels = input_ids.clone().to(device)
+            labels[attention_mask == 0] = -100
+
+            outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+            curr_loss = outputs.loss
+
+            curr_loss.backward()
+            optimizer.step()
+            lr_scheduler.step()
+            optimizer.zero_grad()
+
+            loss += curr_loss
+            batch_step += 1
+            
+            if ((batch_step + 1) % 50) == 0:
+                wandb.log({f"qu-{model_name}-batch-loss": curr_loss}, step=batch_step)
+                print(f"Loss after {str(batch_step).zfill(5)} batch examples: {curr_loss:.3f}")
+
+        wandb.log({f"qu-{model_name}-avg-loss": loss / len(train_dataloader), "epoch": epoch})
+
+    return model
+
+def test_model(model, eval_dataloaders, model_name):
+    losses = {lang: [] for lang in LANGUAGES}
+
+    # Iterate over the dataset for each language and compute the cross-entropy loss per batch
+    model.eval().to(device)
+    for lang, dataloader in eval_dataloaders.items():
+        loss = 0
+        batch_step = 0
+        for batch in dataloader:
+            batch = {k: v.to(device) for k, v in batch.items()}
+            input_ids = batch["input_ids"]
+            attention_mask = batch["attention_mask"]
+            labels = input_ids.clone()
+            labels[attention_mask == 0] = -100
+
+            with torch.no_grad():
+                outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+                loss += outputs.loss
+                batch_step += 1
+
+            if ((batch_step + 1) % 50) == 0:
+                wandb.log({f"{lang}-{model_name}-batch-loss": outputs.loss})
+
+        # Store the loss
+        losses[lang] = loss / len(dataloader)
+
+    # Example: Printing the average loss for each language
+    for lang, loss in losses.items():
+        print(f"Average loss for {lang}: {loss}")
+        wandb.log({f"{lang}-{model_name}-avg-loss": loss})
+
+########################################################
+# Entry point
+########################################################
+if __name__ == "__main__":
+    run_task3()

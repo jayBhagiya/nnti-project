@@ -21,5 +21,5 @@ ENV_NAME=$(awk -F ': ' '/name:/ {print $2}' $ENV_FILE)
 echo "Running 'run.sh' in conda env $ENV_NAME"
 
 cd ${PROJECT_ROOT}
-${CONDA} run -n ${ENV_NAME} bash ${PROJECT_ROOT}/run.sh
+${CONDA} run -n ${ENV_NAME} bash ${PROJECT_ROOT}/run_task2.sh
 
