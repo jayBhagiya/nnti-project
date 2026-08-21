@@ -266,8 +266,8 @@ class IA3DenseLayer(nn.Linear):
 		self.ia3_l_ff = nn.Parameter(torch.randn(self.out_features), requires_grad=True)
 
 	def forward(self, x):
-	   Wx = F.linear(x, self.weight, self.bias)
-	   return self.ia3_l_ff * Wx
+		Wx = F.linear(x, self.weight, self.bias)
+		return self.ia3_l_ff * Wx
 	
 class IA3AdaptedModel(nn.Module):
 	"""Class for the Classification model. It has Efficientnet B0 model as the basemodel with fully connected layer head"""
