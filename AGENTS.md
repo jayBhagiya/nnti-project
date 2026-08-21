@@ -2,21 +2,20 @@
 
 ## Project Structure & Module Organization
 
-This coursework repository studies multilingual XGLM representations and Quechua adaptation. `notebooks/` contains interactive work for Tasks 1–2. `scripts/` contains the Task 2 embedding pipeline, the Task 3 training entry point, and Task 3 data, PEFT, and parameter-count helpers. Keep new task-specific helpers beside these scripts. `tasks/` holds the assignment specifications; `submit_files/` holds the Conda environment and HTCondor launch files. `presentation/` contains plots and diagrams, while submitted report artifacts live at the repository root.
+This coursework repository studies multilingual XGLM representations and Quechua adaptation. `notebooks/` contains the original Task 1–2 exploration. Reproducible entry points and PEFT helpers live in `scripts/`; focused regression checks live in `tests/`. `tasks/` holds the assignment specifications, while `submit_files/` contains the `uv` and HTCondor workflow. `presentation/` contains report figures and diagrams.
 
 ## Environment and Development Commands
 
 Run commands from the repository root unless noted:
 
 ```bash
-conda env create -f submit_files/environment.yml
-conda env update -f submit_files/environment.yml --prune
-conda run -n nnti-project python scripts/task2.py
-conda run -n nnti-project python scripts/task3.py
-python -m compileall scripts
+uv sync --locked --extra cpu
+uv lock --check
+uv run --locked --extra cpu python -m unittest discover -s tests
+uv run --locked --extra cpu python scripts/task2.py --self-test
 ```
 
-The first two commands create or refresh the CUDA-enabled environment. The next two run embedding extraction and model adaptation; both download Hugging Face resources, and Task 3 expects a practical GPU plus W&B authentication. `compileall` is the lightweight syntax check. For HTCondor, work inside `submit_files/` and use `condor_submit setup.sub`, then `condor_submit task2.sub`. Verify Task 3's launcher before submission: `task3.sub` currently references `conda_run_task2.sh`.
+Use the `cpu` extra for local checks and `cu118` on the cluster. Task 1 evaluation is `scripts/lm_eval.py`; Task 2 extraction is `scripts/task2.py`; Task 3 trains exactly one configuration per invocation. On `<submit-node>`, create the locked GPU environment with `condor_submit submit_files/uv_setup.sub`, then run `task3_smoke.sub` before the parallel campaign in `task3.sub`. Task scripts download Hugging Face resources; Task 3 also requires private W&B authentication.
 
 ## Coding Style & Naming Conventions
 
@@ -24,7 +23,7 @@ Use PEP 8 Python with four spaces; do not copy the tabs present in older helper 
 
 ## Testing Guidelines
 
-There is no automated test suite or coverage target. Before a merge request, run `python -m compileall scripts` and exercise the affected entry point. Restart and run affected notebooks when visualization logic changes. Record GPU/CUDA details, sample sizes, and W&B run links for training changes; state clearly when a full run was impractical.
+Use the standard-library `unittest` suite; no coverage target is configured. Every adapter or metric change needs a small synthetic regression that avoids model downloads. Run the commands above and exercise the affected CLI. GPU changes additionally require the HTCondor smoke job. Record CUDA/GPU details, sample manifests, Git commit, and private W&B run links; say when a full run was impractical.
 
 ## Commit & Merge Request Guidelines
 
@@ -32,4 +31,4 @@ History favors short descriptive subjects, without a mandatory Conventional Comm
 
 ## Data and Secrets
 
-Authenticate to Hugging Face and W&B outside the repository; never commit tokens. Keep generated `*.h5`, `*_model.pt`, `logs/`, `wandb/`, and cache files out of commits, and inspect `git status` before pushing.
+Authenticate to Hugging Face and W&B outside the repository; never commit tokens. Keep generated HDF5 files, checkpoints, `runs/`, `logs/`, `wandb/`, and caches out of commits. Public web exports must omit raw FLORES text and private W&B URLs. Inspect `git status` before pushing.

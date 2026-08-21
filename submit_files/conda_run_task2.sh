@@ -1,25 +1,27 @@
-#!/bin/bash
-CONDA_ROOT=$HOME/miniconda3
-CONDA=${CONDA_ROOT}/bin/conda
+#!/usr/bin/env bash
+set -euo pipefail
 
-if [[ -z "{!PROJECT_ROOT}" ]]; then
-    echo "'PROJECT_ROOT' is not set. Check that the submit file contains the line 'environment = PROJECT_HOME=\$ENV(PWD)'"
+CONDA_ROOT="${HOME}/miniconda3"
+CONDA="${CONDA_ROOT}/bin/conda"
+
+if [[ -z "${PROJECT_ROOT:-}" ]]; then
+    echo "PROJECT_ROOT is not set." >&2
     exit 1
-else
-    echo "'PROJECT_ROOT=$PROJECT_ROOT'"
 fi
+echo "PROJECT_ROOT=${PROJECT_ROOT}"
 
 # Check if environment exists
-if [ ! -f ${CONDA} ]; then
-  echo "miniconda3 is not installed. Run condor_submit setup.sub first!"
-  exit 0
+if [[ ! -x "${CONDA}" ]]; then
+    echo "Miniconda is not installed. Run condor_submit setup.sub first." >&2
+    exit 1
 fi
 
-ENV_FILE=$PROJECT_ROOT/environment.yml
-ENV_NAME=$(awk -F ': ' '/name:/ {print $2}' $ENV_FILE)
+ENV_FILE="${PROJECT_ROOT}/environment.yml"
+ENV_NAME="$(awk -F ': ' '/name:/ {print $2}' "${ENV_FILE}")"
+: "${ENV_NAME:?Conda environment name is missing from ${ENV_FILE}}"
 
-echo "Running 'run.sh' in conda env $ENV_NAME"
+echo "Running Task 2 in Conda environment ${ENV_NAME}"
 
-cd ${PROJECT_ROOT}
-${CONDA} run -n ${ENV_NAME} bash ${PROJECT_ROOT}/run_task2.sh
-
+cd "${PROJECT_ROOT}"
+exec "${CONDA}" run --no-capture-output -n "${ENV_NAME}" \
+    bash "${PROJECT_ROOT}/run_task2.sh" "$@"

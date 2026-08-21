@@ -1,0 +1,25 @@
+project_dir = /path/to/nnti-project
+data_dir = /path/to/large-storage/nnti-project
+wandb_project = nnti-xglm-quechua
+wandb_entity = your-wandb-entity
+
+universe = docker
+docker_image = pytorch/pytorch:2.2.2-cuda11.8-cudnn8-runtime
+initialdir = $(project_dir)
+executable = $(project_dir)/submit_files/uv_run.sh
+arguments = scripts/task3.py --method lora --rank 1 --seed 42 --train-samples 8 --adaptation-eval-samples 4 --flores-eval-samples 4 --test-samples 4 --epochs 1 --batch-size 1 --gradient-accumulation 1 --output-dir $(data_dir)/runs/smoke/task3.$(ClusterId).$(ProcId) --wandb-project $(wandb_project) --wandb-entity $(wandb_entity) --wandb-group smoke-v1 --wandb-run-name smoke-lora-r1
+environment = "PROJECT_DIR=$(project_dir) DATA_DIR=$(data_dir) UV_PROJECT_ENVIRONMENT=$(data_dir)/venvs/nnti-project WANDB_DIR=$(data_dir)/wandb/smoke/$(ClusterId).$(ProcId)"
+should_transfer_files = NO
+getenv = HOME
++WantGPUHomeMounted = true
+
+output = $(data_dir)/logs/task3-smoke.$(ClusterId).$(ProcId).out
+error = $(data_dir)/logs/task3-smoke.$(ClusterId).$(ProcId).err
+log = $(data_dir)/logs/task3-smoke.$(ClusterId).$(ProcId).log
+
+request_cpus = 4
+request_memory = 16G
+request_gpus = 1
+requirements = (GPUs_GlobalMemoryMb >= 16000)
+
+queue 1

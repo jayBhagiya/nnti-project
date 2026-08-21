@@ -1,17 +1,34 @@
-universe                = docker
-docker_image            = pytorch/pytorch:2.0.1-cuda11.7-cudnn8-runtime
-# This uses the conda env
-executable              = conda_run_task2.sh  
-environment             = PROJECT_ROOT=$ENV(PWD)
-initialdir              = $ENV(PWD)
-output                  = logs/task3.$(ClusterId).$(ProcId).out
-error                   = logs/task3.$(ClusterId).$(ProcId).err
-log                     = logs/task3.$(ClusterId).log
-transfer_output         = True
-request_GPUs = 4
-request_CPUs = 1
-request_memory = 16G
-requirements = (GPUs_GlobalMemoryMb >= 16000)
+project_dir = /path/to/nnti-project
+data_dir = /path/to/large-storage/nnti-project
+campaign = final-v1
+wandb_project = nnti-xglm-quechua
+wandb_entity = your-wandb-entity
+
+universe = docker
+docker_image = pytorch/pytorch:2.2.2-cuda11.8-cudnn8-runtime
+initialdir = $(project_dir)
+executable = $(project_dir)/submit_files/uv_run.sh
+arguments = scripts/task3.py --method $(method) --rank $(rank) --seed $(seed) --output-dir $(data_dir)/runs/$(campaign)/$(method)-r$(rank)-s$(seed).$(ClusterId).$(ProcId) --wandb-project $(wandb_project) --wandb-entity $(wandb_entity) --wandb-group $(campaign) --wandb-run-name $(method)-r$(rank)-s$(seed)
+environment = "PROJECT_DIR=$(project_dir) DATA_DIR=$(data_dir) UV_PROJECT_ENVIRONMENT=$(data_dir)/venvs/nnti-project WANDB_DIR=$(data_dir)/wandb/$(campaign)/$(ClusterId).$(ProcId)"
+should_transfer_files = NO
 getenv = HOME
 +WantGPUHomeMounted = true
-queue 1
+
+output = $(data_dir)/logs/task3.$(ClusterId).$(ProcId).out
+error = $(data_dir)/logs/task3.$(ClusterId).$(ProcId).err
+log = $(data_dir)/logs/task3.$(ClusterId).$(ProcId).log
+
+request_cpus = 4
+request_memory = $(memory)
+request_gpus = 1
+requirements = (GPUs_GlobalMemoryMb >= $(gpu_memory_mb))
+
+queue method, rank, seed, memory, gpu_memory_mb from (
+    full   0 42 32G 24000
+    bitfit 0 42 24G 16000
+    ia3    0 42 24G 16000
+    lora   1 42 24G 16000
+    lora   2 42 24G 16000
+    lora   4 42 24G 16000
+    lora   8 42 24G 16000
+)
