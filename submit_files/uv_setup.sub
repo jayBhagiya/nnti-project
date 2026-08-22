@@ -6,7 +6,7 @@ data_dir = /path/to/large-storage/nnti-project
 
 universe = docker
 docker_image = pytorch/pytorch:2.2.2-cuda11.8-cudnn8-runtime
-initialdir = $(project_dir)
+initialdir = /path/to/home
 executable = $(project_dir)/submit_files/uv_setup.sh
 environment = "PROJECT_DIR=$(project_dir) DATA_DIR=$(data_dir)"
 should_transfer_files = NO

@@ -6,7 +6,7 @@ wandb_entity = your-wandb-entity
 
 universe = docker
 docker_image = pytorch/pytorch:2.2.2-cuda11.8-cudnn8-runtime
-initialdir = $(project_dir)
+initialdir = /path/to/home
 executable = $(project_dir)/submit_files/uv_run.sh
 arguments = scripts/task3.py --method $(method) --rank $(rank) --seed $(seed) --output-dir $(data_dir)/runs/$(campaign)/$(method)-r$(rank)-s$(seed).$(ClusterId).$(ProcId) --wandb-project $(wandb_project) --wandb-entity $(wandb_entity) --wandb-group $(campaign) --wandb-run-name $(method)-r$(rank)-s$(seed)
 environment = "PROJECT_DIR=$(project_dir) DATA_DIR=$(data_dir) UV_PROJECT_ENVIRONMENT=$(data_dir)/venvs/nnti-project WANDB_DIR=$(data_dir)/wandb/$(campaign)/$(ClusterId).$(ProcId)"
@@ -25,10 +25,10 @@ requirements = (GPUs_GlobalMemoryMb >= $(gpu_memory_mb))
 
 queue method, rank, seed, memory, gpu_memory_mb from (
     full   0 42 32G 24000
-    bitfit 0 42 24G 16000
-    ia3    0 42 24G 16000
-    lora   1 42 24G 16000
-    lora   2 42 24G 16000
-    lora   4 42 24G 16000
-    lora   8 42 24G 16000
+    bitfit 0 42 24G 12000
+    ia3    0 42 24G 12000
+    lora   1 42 24G 12000
+    lora   2 42 24G 12000
+    lora   4 42 24G 12000
+    lora   8 42 24G 12000
 )

@@ -9,7 +9,7 @@ from pathlib import Path
 MODEL_NAME = "facebook/xglm-564M"
 MODEL_REVISION = "f3059f01b98ccc877c673149e0178c0e957660f9"
 DATASET_NAME = "facebook/flores"
-DATASET_REVISION = "2db78afdeaccaedc3b33a95442a4e55766887e17"
+DATASET_REVISION = "71abf77d8b7beb5cfef59898d6b24d92ab7654fc"
 LANGUAGES = [
     "eng_Latn",
     "spa_Latn",
@@ -73,6 +73,7 @@ def parse_args():
 def load_dataset(args, language, datasets):
     kwargs = {
         "split": args.split,
+        "token": True,
         "trust_remote_code": True,
     }
     if args.dataset_revision:

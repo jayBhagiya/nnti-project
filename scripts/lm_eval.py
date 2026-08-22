@@ -14,7 +14,7 @@ import torch
 
 
 DATASET_NAME = "facebook/flores"
-DATASET_REVISION = "2db78afdeaccaedc3b33a95442a4e55766887e17"
+DATASET_REVISION = "71abf77d8b7beb5cfef59898d6b24d92ab7654fc"
 TASK1_MODELS = ("facebook/xglm-564M", "gpt2")
 MODEL_REVISIONS = {
     "facebook/xglm-564M": "f3059f01b98ccc877c673149e0178c0e957660f9",
@@ -232,6 +232,7 @@ def main() -> None:
             language,
             split=args.split,
             revision=args.dataset_revision,
+            token=True,
             trust_remote_code=True,
         )
         if split_size is None:

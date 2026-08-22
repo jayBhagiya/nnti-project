@@ -8,7 +8,6 @@ import json
 import math
 import os
 import random
-import subprocess
 import time
 from pathlib import Path
 from typing import Any, Sequence
@@ -52,7 +51,7 @@ MODEL_NAME = "facebook/xglm-564M"
 MODEL_REVISION = "f3059f01b98ccc877c673149e0178c0e957660f9"
 ADAPTATION_DATASET = "hackathon-pln-es/spanish-to-quechua"
 ADAPTATION_DATASET_REVISION = "aa48b3c7f4d0c1450f8f2df27ceb8a882b022600"
-FLORES_REVISION = "2db78afdeaccaedc3b33a95442a4e55766887e17"
+FLORES_REVISION = "71abf77d8b7beb5cfef59898d6b24d92ab7654fc"
 ADAPTATION_DATA_FILES = {
     "train": "data/train-00000-of-00001.parquet",
     "validation": "data/validation-00000-of-00001.parquet",
@@ -163,13 +162,21 @@ def text_manifest_hash(named_texts: dict[str, Sequence[str]]) -> str:
 
 
 def git_commit() -> str:
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    return result.stdout.strip() if result.returncode == 0 else "unknown"
+    git_dir = Path(__file__).resolve().parents[1] / ".git"
+    try:
+        head = (git_dir / "HEAD").read_text(encoding="utf-8").strip()
+        if not head.startswith("ref: "):
+            return head
+        ref = head.removeprefix("ref: ")
+        ref_path = git_dir / ref
+        if ref_path.exists():
+            return ref_path.read_text(encoding="utf-8").strip()
+        for line in (git_dir / "packed-refs").read_text(encoding="utf-8").splitlines():
+            if line.endswith(f" {ref}"):
+                return line.split(" ", 1)[0]
+    except OSError:
+        pass
+    return "unknown"
 
 
 def write_json(path: Path, value: Any) -> None:

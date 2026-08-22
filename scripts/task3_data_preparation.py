@@ -86,6 +86,7 @@ def prepare_flores_eval(
             FLORES_DATASET,
             language,
             revision=revision,
+            token=True,
             trust_remote_code=True,
         )[split]
         if shared_ids is None:
