@@ -131,6 +131,28 @@ uv run --locked --extra cpu python scripts/task2.py \
   --checkpoint runs/task3/lora-r4/best.pt --output runs/task2/lora-r4.h5
 ```
 
+## Trained adapters
+
+The BitFit, IA³, and LoRA checkpoints from the project runs are attached to the [v1.0 release](https://github.com/jayBhagiya/nnti-project/releases/tag/v1.0) (12 MB). Each run folder holds `best.pt` plus its `config.json`, `history.jsonl`, and `summary.json`. Loss is the per-token negative log-likelihood on all 1,012 FLORES devtest sentences; the base model scores 6.96 on Quechua and 5.12 on English.
+
+| Run | Trainable parameters | Quechua loss | English loss |
+|---|---:|---:|---:|
+| `bitfit-r0-s42` | 271,360 | 5.71 | 6.86 |
+| `ia3-r0-s42` | 147,456 | 5.90 | 4.97 |
+| `lora-r1-s42` | 196,608 | 5.72 | 5.78 |
+| `lora-r2-s42` | 393,216 | 5.72 | 5.83 |
+| `lora-r4-s42` | 786,432 | 5.71 | 5.85 |
+| `lora-r8-s42` | 1,572,864 | 5.71 | 5.81 |
+
+The checkpoints store only the trained parameters, so they load through this repository's code on top of the base XGLM-564M:
+
+```bash
+curl -LO https://github.com/jayBhagiya/nnti-project/releases/download/v1.0/xglm-quechua-adapters.tar.gz
+tar xzf xglm-quechua-adapters.tar.gz
+uv run --locked --extra cpu python scripts/task2.py \
+  --checkpoint xglm-quechua-adapters/lora-r4-s42/best.pt --output runs/task2/lora-r4.h5
+```
+
 ## Running on an HTCondor cluster
 
 `submit_files/` runs the same scripts as cluster jobs inside the `pytorch/pytorch:2.2.2-cuda11.8-cudnn8-runtime` Docker image. A setup job installs uv and the locked GPU environment once into shared storage; every task job then reuses it.
