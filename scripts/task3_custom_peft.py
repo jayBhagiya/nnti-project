@@ -200,38 +200,3 @@ def load_trainable_state_dict(
         )
     model.load_state_dict(state_dict, strict=False)
 
-
-class _AdaptedModel(nn.Module):
-    method = "full"
-
-    def __init__(
-        self,
-        model_name: str,
-        rank: int = 4,
-        alpha: float = 1.0,
-        revision: str | None = None,
-    ):
-        super().__init__()
-        self.model = build_adapted_model(
-            model_name,
-            method=self.method,
-            rank=rank,
-            alpha=alpha,
-            revision=revision,
-        )
-        self.model_config = self.model.config
-
-    def forward(self, *args, **kwargs):
-        return self.model(*args, **kwargs)
-
-
-class BitFitAdaptedModel(_AdaptedModel):
-    method = "bitfit"
-
-
-class LoRaAdaptedModel(_AdaptedModel):
-    method = "lora"
-
-
-class IA3AdaptedModel(_AdaptedModel):
-    method = "ia3"

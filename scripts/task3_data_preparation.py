@@ -102,23 +102,3 @@ def prepare_flores_eval(
         result[language] = [dataset[index]["sentence"] for index in shared_ids]
     return result
 
-
-def prepare_data_fine_tune_eval(languages: list[str]) -> dict[str, list[str]]:
-    """Compatibility wrapper for the original coursework entry point."""
-
-    return prepare_flores_eval(languages)
-
-
-def prepare_data_qu(
-    dataset_path: str,
-    data_files: dict[str, str],
-) -> tuple[list[str], list[str]]:
-    """Compatibility wrapper returning the original train/validation pair."""
-
-    prepared = prepare_adaptation_data(
-        dataset_path,
-        data_files=data_files,
-        seed=0,
-        train_samples=None,
-    )
-    return prepared["train"], prepared["validation"]

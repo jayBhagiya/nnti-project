@@ -49,7 +49,7 @@ except ImportError:
 
 MODEL_NAME = "facebook/xglm-564M"
 MODEL_REVISION = "f3059f01b98ccc877c673149e0178c0e957660f9"
-ADAPTATION_DATASET = "hackathon-pln-es/spanish-to-quechua"
+ADAPTATION_DATASET = "somosnlp-hackathon-2022/spanish-to-quechua"
 ADAPTATION_DATASET_REVISION = "aa48b3c7f4d0c1450f8f2df27ceb8a882b022600"
 FLORES_REVISION = "71abf77d8b7beb5cfef59898d6b24d92ab7654fc"
 ADAPTATION_DATA_FILES = {
@@ -99,6 +99,7 @@ def parse_args() -> argparse.Namespace:
         default=True,
     )
     parser.add_argument("--num-workers", type=int, default=0)
+    parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--wandb-project", default="nnti-xglm-quechua")
     parser.add_argument("--wandb-entity", default=os.environ.get("WANDB_ENTITY"))
@@ -107,7 +108,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--wandb-mode",
         choices=("online", "offline", "disabled"),
-        default=os.environ.get("WANDB_MODE", "online"),
+        default=os.environ.get("WANDB_MODE", "offline"),
     )
     args = parser.parse_args()
 
@@ -418,11 +419,14 @@ def run_task3(args: argparse.Namespace) -> None:
     if args.output_dir.exists():
         raise FileExistsError(f"Output directory already exists: {args.output_dir}")
     seed_everything(args.seed)
-    if not torch.cuda.is_available():
-        raise RuntimeError("Task 3 training requires a CUDA GPU")
-    device = torch.device("cuda")
-    use_fp16 = args.fp16
-    torch.cuda.reset_peak_memory_stats(device)
+    if args.device == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA was requested but is not available")
+    use_cuda = args.device == "cuda" or (args.device == "auto" and torch.cuda.is_available())
+    device = torch.device("cuda" if use_cuda else "cpu")
+    # fp16 autocast and loss scaling only help on a GPU.
+    use_fp16 = args.fp16 and use_cuda
+    if use_cuda:
+        torch.cuda.reset_peak_memory_stats(device)
 
     args.output_dir.mkdir(parents=True)
     history_path = args.output_dir / "history.jsonl"
@@ -502,7 +506,7 @@ def run_task3(args: argparse.Namespace) -> None:
         "max_sequence_length": model.config.max_position_embeddings,
         "git_commit": git_commit(),
         "model_commit": getattr(model.config, "_commit_hash", None),
-        "device": torch.cuda.get_device_name(device),
+        "device": torch.cuda.get_device_name(device) if use_cuda else "cpu",
         "torch_version": torch.__version__,
         "cuda_version": torch.version.cuda,
         "adaptation_split_sizes": {
@@ -664,7 +668,7 @@ def run_task3(args: argparse.Namespace) -> None:
         "training_seconds": training_seconds,
         "training_predicted_tokens": total_train_tokens,
         "training_tokens_per_second": total_train_tokens / training_seconds,
-        "peak_gpu_memory_bytes": torch.cuda.max_memory_allocated(device),
+        "peak_gpu_memory_bytes": torch.cuda.max_memory_allocated(device) if use_cuda else 0,
         "baseline_development": baseline_development,
         "baseline_final": baseline_final,
         "final": final_metrics,
