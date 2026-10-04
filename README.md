@@ -1,6 +1,6 @@
 # Multilingual XGLM Evaluation and Quechua Adaptation
 
-Course project for *Neural Networks: Theory and Implementation* (Saarland University, WS 2023/24) by Nischal Maharjan, Jaykumar Bhagiya, and Hevra Petekkaya.
+Course project for *Neural Networks: Theory and Implementation* (Saarland University, WS 2023/24).
 
 The project studies how the multilingual language model [XGLM-564M](https://huggingface.co/facebook/xglm-564M) handles languages it saw little of, and how to adapt it to one of them, Ayacucho Quechua:
 
@@ -8,7 +8,7 @@ The project studies how the multilingual language model [XGLM-564M](https://hugg
 2. **Task 2, representations:** layer-wise token and sentence representations of XGLM, saved to HDF5 and visualised with PCA and t-SNE.
 3. **Task 3, adaptation:** adapting XGLM to Quechua with full fine-tuning and three parameter-efficient methods implemented from scratch: [BitFit](https://arxiv.org/abs/2106.10199), [LoRA](https://arxiv.org/abs/2106.09685), and [IA³](https://arxiv.org/abs/2205.05638). Each run tracks how the other languages change.
 
-The findings are in the [project report](reports/nnti_project_report.pdf) and the [project write-up](https://jaybhagiya.me/projects/xglm-quechua-adaptation/). The original assignment text is in [`tasks/`](tasks/).
+The findings are in the [project write-up](https://jaybhagiya.me/projects/xglm-quechua-adaptation/). The original assignment text is in [`tasks/`](tasks/).
 
 ## Repository layout
 
@@ -21,7 +21,7 @@ The findings are in the [project report](reports/nnti_project_report.pdf) and th
 | `scripts/task3_data_preparation.py` | Quechua training data and FLORES evaluation subsets |
 | `notebooks/` | Task 1 walkthrough and Task 2 PCA / t-SNE visualisations |
 | `tests/` | Unit tests for the evaluation, PEFT, and data code |
-| `reports/` | Project report and figures |
+| `submit_files/` | HTCondor jobs for running everything on a GPU cluster |
 
 ## Setup
 
@@ -73,7 +73,7 @@ Each row of the CSV holds one model and language: negative log-likelihood, perpl
 # Quick: 4 sentences per language
 uv run --locked --extra cpu python scripts/task2.py --num-samples 4 --output runs/task2/base.h5
 
-# Full: 200 sentences per language, as in the report (about 5 GB of HDF5)
+# Full: 200 sentences per language (about 5 GB of HDF5)
 uv run --locked --extra cpu python scripts/task2.py --output runs/task2/base.h5
 ```
 
@@ -101,7 +101,7 @@ uv run --locked --extra cu118 python scripts/task3.py \
   --method lora --rank 4 --output-dir runs/task3/lora-r4
 ```
 
-To reproduce all seven configurations from the report:
+To run all seven configurations compared in the project:
 
 ```bash
 for config in "full 0" "bitfit 0" "ia3 0" "lora 1" "lora 2" "lora 4" "lora 8"; do
@@ -130,6 +130,42 @@ To see how adaptation changed the representations, rerun Task 2 on a checkpoint.
 uv run --locked --extra cpu python scripts/task2.py \
   --checkpoint runs/task3/lora-r4/best.pt --output runs/task2/lora-r4.h5
 ```
+
+## Running on an HTCondor cluster
+
+`submit_files/` runs the same scripts as cluster jobs inside the `pytorch/pytorch:2.2.2-cuda11.8-cudnn8-runtime` Docker image. A setup job installs uv and the locked GPU environment once into shared storage; every task job then reuses it.
+
+**1. Edit the variables at the top of each `.sub` file:**
+
+| Variable | Set it to |
+|---|---|
+| `project_dir` | Where this repository is cloned, on a path the worker nodes can read |
+| `data_dir` | Large shared storage for the environment, model cache, logs, and results (plan for about 20 GB) |
+| `wandb_entity` | Your W&B user or team (`task3.sub`, `task3_smoke.sub`) |
+| `wandb_project`, `campaign` | Optional: W&B project and run-group names |
+
+**2. Adapt the resource lines to your cluster:**
+- `requirements` selects GPUs by memory (`GPUs_GlobalMemoryMb`). Add any extra constraints your cluster needs, such as a `UidDomain` or machine pool.
+- `+WantGPUHomeMounted = true` is a site-specific attribute that mounts the home directory in the container. Remove it if your cluster doesn't define it.
+- Your cluster must support the Docker universe. If it doesn't, switch to `universe = vanilla` and make sure the workers have Python available for `uv_setup.sh`.
+
+**3. Create the storage folders, log in, and submit:**
+
+```bash
+mkdir -p /path/to/large-storage/nnti-project/{logs,runs,wandb,cache,venvs,python,tools}
+# The jobs use data_dir/cache/huggingface as HF_HOME, so store the token there
+HF_HOME=/path/to/large-storage/nnti-project/cache/huggingface uv run --locked --extra cpu hf auth login
+uv run --locked --extra cpu wandb login       # saved in ~/.netrc
+
+cd submit_files
+condor_submit uv_setup.sub        # once: install the environment
+condor_submit task3_smoke.sub     # quick end-to-end check on a tiny sample
+condor_submit task1.sub
+condor_submit task2.sub
+condor_submit task3.sub           # queues the seven adaptation runs as separate jobs
+```
+
+The W&B login is read from your home directory, so log in from a machine that shares it (and `data_dir`) with the workers. Results land in `data_dir/runs/` and job logs in `data_dir/logs/`.
 
 ## Tests
 
